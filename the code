@@ -1,0 +1,249 @@
+// Code for a Golf Rangefinder I built in February 2024 using the following components. Arduino Nano Every, 2x Adafruit 7 Segment 4-Digit Displays with Backpack and a Adafruit Ultimate GPS Module. 
+
+
+#include <Adafruit_GPS.h>
+#include <SoftwareSerial.h>
+#include <Wire.h> // Enable this line if using Arduino Uno, Mega, etc.
+#include <Adafruit_GFX.h>
+#include "Adafruit_LEDBackpack.h"
+
+Adafruit_7segment matrix1 = Adafruit_7segment();
+Adafruit_7segment matrix2 = Adafruit_7segment();
+
+// Define the button pin
+const int buttonPin = 2;
+
+SoftwareSerial mySerial(3, 4); // RX, TX
+Adafruit_GPS GPS(&mySerial);
+
+// Declaration of functions
+bool isValidGPSData(double lat, double lon);
+void addGPSSample(double lat, double lon);
+void getAveragedGPS(double &avgLat, double &avgLon);
+double calculateDistance(double lat1, double lon1, double lat2, double lon2);
+void setFixedPosition(); // Function to set the fixed position
+
+// Fixed position coordinates
+double fixedLat = 0;
+double fixedLon = 0;
+
+// Hole coordinates (Replace coordinates with any 18 coordinates/hole locations)
+
+double hole1Lat = 47.40294442;
+double hole1Lon = 8.50332567; 
+double hole2Lat = 47.40320823;
+double hole2Lon = 8.50262583; 
+double hole3Lat = 47.42563954;
+double hole3Lon = 8.56366559; 
+double hole4Lat = 47.42537402;
+double hole4Lon = 8.56327436; 
+double hole5Lat = 47.42497352;
+double hole5Lon = 8.56330485; 
+double hole6Lat = 47.41440953;
+double hole6Lon = 8.51900106; 
+double hole7Lat = 47.40538721;
+double hole7Lon = 8.50482370; 
+double hole8Lat = 47.40345901633107;
+double hole8Lon = 8.497266421489234;
+double hole9Lat = 47.40364625583758;
+double hole9Lon = 8.496525162869606;
+double hole10Lat = 47.40380786518499;
+double hole10Lon = 8.496156750993478;
+double hole11Lat = 47.40357091032169;
+double hole11Lon = 8.496139593950423;
+double hole12Lat = 47.40362593678161;
+double hole12Lon = 8.497308700656873;
+double hole13Lat = 47.403240283224896;
+double hole13Lon = 8.498062758104998;
+double hole14Lat = 47.40330769369081;
+double hole14Lon = 8.498752568967854;
+double hole15Lat = 47.402590619584586;
+double hole15Lon = 8.498947349066913;
+double hole16Lat = 47.402946245845655;
+double hole16Lon = 8.50002206648034;
+double hole17Lat = 47.402838351870166;
+double hole17Lon = 8.501568806494358;
+double hole18Lat = 47.40325711668361;
+double hole18Lon = 8.502460690080287;
+
+// Variable for the button state
+int buttonState = 2;
+
+// Variable to hold the count value
+int count = 0;
+
+// Variable to store the last button state
+int lastButtonState = LOW;
+
+// Variable to debounce the button press
+unsigned long lastDebounceTime = 0;
+unsigned long debounceDelay = 50;
+
+#define AVERAGE_SAMPLES 2  // Reduced number of samples for the moving average to 3
+double latBuffer[AVERAGE_SAMPLES];
+double lonBuffer[AVERAGE_SAMPLES];
+int sampleCount = 0;
+
+void setup() {
+  matrix1.begin(0x70); 
+  matrix2.begin(0x71);
+
+  Serial.begin(9600);
+  
+  GPS.begin(9600); // Initialize GPS
+  GPS.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCGGA); // Set the GPS to output the RMC and GGA NMEA sentences
+  GPS.sendCommand(PMTK_SET_NMEA_UPDATE_1HZ); // Set the GPS to update at 1Hz
+  GPS.sendCommand(PGCMD_ANTENNA); // Request for the GPS module to show the antenna status
+
+  pinMode(buttonPin, INPUT_PULLUP); // Set the button pin as input with internal pull-up enabled
+
+   matrix1.print("GPS_"); 
+  matrix1.writeDisplay();
+  delay(100);
+  
+  matrix2.print("ONE_"); 
+  matrix2.writeDisplay();
+  delay(100);
+}
+
+void loop() {
+  int reading = digitalRead(buttonPin);
+
+  if (reading != lastButtonState) {
+    lastDebounceTime = millis();
+  }
+
+  if ((millis() - lastDebounceTime) > debounceDelay) {
+    if (reading != buttonState) {
+      buttonState = reading;
+      if (buttonState == LOW) {
+        count = count % 18 + 1;
+        setFixedPosition(); // Update fixed position based on count
+        
+        matrix2.clear();
+        matrix2.println(count);
+        matrix2.writeDisplay();
+
+        Serial.println(fixedLat); // Debugging: Print fixed latitude
+      }
+    }
+  }
+
+  lastButtonState = reading;
+
+  char c = GPS.read();
+  if (GPS.newNMEAreceived()) {
+    if (GPS.parse(GPS.lastNMEA())) {
+      if (GPS.fix && isValidGPSData(GPS.latitudeDegrees, GPS.longitudeDegrees)) {
+        addGPSSample(GPS.latitudeDegrees, GPS.longitudeDegrees);
+
+        double avgLat, avgLon;
+        getAveragedGPS(avgLat, avgLon);
+
+        double distance = calculateDistance(avgLat, avgLon, fixedLat, fixedLon);
+        int distanceInt = static_cast<int>(round(distance));
+
+        matrix1.print(distanceInt);
+        matrix1.writeDisplay();
+        delay(100);
+      }
+    }
+  }
+}
+
+void setFixedPosition() {
+  if (count == 1) {
+    fixedLat = hole1Lat;
+    fixedLon = hole1Lon;
+  } else if (count == 2) {
+    fixedLat = hole2Lat;
+    fixedLon = hole2Lon;
+  } else if (count == 3) {
+    fixedLat = hole3Lat;
+    fixedLon = hole3Lon;
+  }  else if (count == 4) {
+    fixedLat = hole4Lat;
+    fixedLon = hole4Lon;
+  } else if (count == 5) {
+    fixedLat = hole5Lat;
+    fixedLon = hole5Lon;
+  } else if (count == 6) {
+    fixedLat = hole6Lat;
+    fixedLon = hole6Lon;
+  } else if (count == 7) {
+    fixedLat = hole7Lat;
+    fixedLon = hole7Lon;
+  } else if (count == 8) {
+    fixedLat = hole8Lat;
+    fixedLon = hole8Lon;
+  } else if (count == 9) {
+    fixedLat = hole9Lat;
+    fixedLon = hole9Lon;
+  } else if (count == 10) {
+    fixedLat = hole10Lat;
+    fixedLon = hole10Lon;
+  } else if (count == 11) {
+    fixedLat = hole11Lat;
+    fixedLon = hole11Lon;
+  } else if (count == 12) {
+    fixedLat = hole12Lat;
+    fixedLon = hole12Lon;
+  } else if (count == 13) {
+    fixedLat = hole13Lat;
+    fixedLon = hole13Lon;
+  } else if (count == 14) {
+    fixedLat = hole14Lat;
+    fixedLon = hole14Lon;
+  } else if (count == 15) {
+    fixedLat = hole15Lat;
+    fixedLon = hole15Lon;
+  } else if (count == 16) {
+    fixedLat = hole16Lat;
+    fixedLon = hole16Lon;
+  } else if (count == 17) {
+    fixedLat = hole17Lat;
+    fixedLon = hole17Lon;
+  } else if (count == 18) {
+    fixedLat = hole18Lat;
+    fixedLon = hole18Lon;
+  }else {
+    fixedLat = 0;
+    fixedLon = 0;
+  }
+}
+
+bool isValidGPSData(double lat, double lon) {
+  return lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180;
+}
+
+void addGPSSample(double lat, double lon) {
+  latBuffer[sampleCount % AVERAGE_SAMPLES] = lat;
+  lonBuffer[sampleCount % AVERAGE_SAMPLES] = lon;
+  sampleCount++;
+}
+
+void getAveragedGPS(double &avgLat, double &avgLon) {
+  double sumLat = 0, sumLon = 0;
+  int count = min(sampleCount, AVERAGE_SAMPLES);
+  for (int i = 0; i < count; i++) {
+    sumLat += latBuffer[i];
+    sumLon += lonBuffer[i];
+  }
+  avgLat = sumLat / count;
+  avgLon = sumLon / count;
+}
+
+double calculateDistance(double lat1, double lon1, double lat2, double lon2) {
+  double R = 6371000;
+  double phi1 = lat1 * (PI / 180);
+  double phi2 = lat2 * (PI / 180);
+  double deltaPhi = (lat2 - lat1) * (PI / 180);
+  double deltaLambda = (lon2 - lon1) * (PI / 180);
+
+  double a = sin(deltaPhi / 2) * sin(deltaPhi / 2) +
+             cos(phi1) * cos(phi2) *
+             sin(deltaLambda / 2) * sin(deltaLambda / 2);
+  double c = 2 * atan2(sqrt(a), sqrt(1 - a));
+
+  return R * c; // Distance in meters
+}
